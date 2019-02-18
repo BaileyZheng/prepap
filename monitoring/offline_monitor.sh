@@ -1,7 +1,9 @@
 #!/bin/sh
 
 export THIS_PID=$$
-PREPAP_PATH=/home/zbl/prepap
+cd ..
+PREPAP_PATH=`pwd`
+cd monitoring
 EVENT_FILE_CONFIG=$PREPAP_PATH/monitoring/conf
 ABNORMAL_DATA_PATH=$PREPAP_PATH/dataset/rawdata/abnormal
 QUICKHPC_PATH=$PREPAP_PATH/tools/quickhpc/quickhpc
@@ -22,7 +24,7 @@ do
 #			continue
 #		fi
 		# 运行程序
-		$line &
+		${PREPAP_PATH}/${line} &
 		# 获取运行程序的PID	
 		PID=`ps -ef | grep $PNAME | grep -v grep | cut -c 9-15 `
 		echo $PID
