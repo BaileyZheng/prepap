@@ -32,19 +32,27 @@ def compute_features(data):
 		lists.append(np.median(row))
 	return lists
 
-cdef public int detection(const long (*a)[4],int size,int length):
+cdef public int detection(int size,int length,long long **a):
 	lists=[]
+	count=0
 	for i in np.arange(size):
 		row=[]
+		is_zero=True
 		for j in np.arange(length):
-			row.append(a[i][j])
-		lists.append(row)
-	if size<20:
+			x=a[i][j]
+			if x!=0:
+				is_zero=False
+			row.append(x)
+		if not is_zero:
+			lists.append(row)
+			count=count+1
+	if size<20 and count<20:
 		return -1
 	features=compute_features(lists)
 	if len(features)==0:
 		return -1
 	features=np.asarray(features)
-	predict_result=xgb_clf.predict(features.reshape(1,-1))[0]
-	predict_result=predict_result+dec_clf.predict(features.reshape(1,-1))[0]+mlp_clf.predict(features.reshape(1,-1))[0]
+	predict_result=dec_clf.predict(features.reshape(1,-1))[0]
+	if predict_result==1:
+		predict_result=predict_result+xgb_clf.predict(features.reshape(1,-1))[0]+mlp_clf.predict(features.reshape(1,-1))[0]
 	return predict_result
