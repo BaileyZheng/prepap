@@ -4,15 +4,15 @@
 jmp_buf exp1;
 
 pid_t cur_pid;
-int WIN_SIZE=30;
+int WIN_SIZE=31;
 int Q1_WIN_NUM=50000;
 int Q2_WIN_NUM=30;
 int pids[1+MAXLENGTH>>5];
-int queue1[MAXLENGTH];
+int queue1[QUEUELENGTH];
 int start1=0;
 int end1=0;
 int size1=0;
-int queue2[MAXLENGTH];
+int queue2[QUEUELENGTH];
 int start2=0;
 int end2=0;
 int size2=0;
@@ -46,13 +46,13 @@ int main(int argc, char* argv[]){
 	pthread_create(&win_consumer1,NULL,(void *)mon_short,NULL);
 	pthread_t win_consumer2;
 	pthread_create(&win_consumer2,NULL,(void *)mon_short,NULL);
-	pthread_t win_consumer3;
-	pthread_create(&win_consumer3,NULL,(void *)mon_short,NULL);
+//	pthread_t win_consumer3;
+//	pthread_create(&win_consumer3,NULL,(void *)mon_short,NULL);
 	pthread_join(producer,NULL);
 	pthread_join(round_consumer,NULL);
 	pthread_join(win_consumer1,NULL);
 	pthread_join(win_consumer2,NULL);
-	pthread_join(win_consumer3,NULL);
+//	pthread_join(win_consumer3,NULL);
 	pthread_mutex_destroy(&mut0);
 	pthread_mutex_destroy(&mut1);
 	pthread_mutex_destroy(&mut2);
@@ -76,7 +76,7 @@ void produce_pid(){
         while(1){
 		int i;
 #ifdef DEBUG //_QUEUE
-//		printQues();
+		printQues();
 #endif
 		dir=opendir("/proc");
 		if(!dir)continue;
@@ -86,13 +86,13 @@ void produce_pid(){
 			if(isdigit(next->d_name[0])){
 				int idx=atoi(next->d_name);
 				if((pids[idx>>5]&(1<<(idx&0x1F)))==0&&check_exists(idx)&&!check_white(idx)){
-					pthread_mutex_lock(&mut1);
-					if(size1<MAXLENGTH){
+					if(size1<QUEUELENGTH){
+						pthread_mutex_lock(&mut1);
 						queue1[end1]=idx;
-						end1=(end1+1)%MAXLENGTH;
+						end1=(end1+1)&QUEUELENGTH;
 						size1++;
+						pthread_mutex_unlock(&mut1);
 					}
-					pthread_mutex_unlock(&mut1);
 				}
 				newpids[idx>>5]|=(1<<(idx&0x1F));
 			}
@@ -113,7 +113,7 @@ void mon_short(){
 				continue;
 			}
 			int t=queue1[start1];
-			start1=(start1+1)%MAXLENGTH;
+			start1=(start1+1)&QUEUELENGTH;
 			size1--;
 			pthread_mutex_unlock(&mut1);
 			if(!check_exists(t))continue;
@@ -129,7 +129,7 @@ void mon_short(){
 						printf("%d ",queue1[i]);
 					}
 				}else{
-					for(i=start1,i<MAXLENGTH;i++){
+					for(i=start1,i<QUEUELENGTH;i++){
 						printf("%d ",queue1[i]);
 					}
 					for(i=0;i<end1;i++){
@@ -160,7 +160,7 @@ void mon_long(){
 			continue;
 		}
 		int t=queue2[start2];
-		start2=(start2+1)%MAXLENGTH;
+		start2=(start2+1)&QUEUELENGTH;
 		size2--;
 		pthread_mutex_unlock(&mut2);
 		if(!check_exists(t))continue;
@@ -176,7 +176,7 @@ void mon_long(){
 					printf("%d ",queue2[i]);
 				}
 			}else{
-				for(i=start2;i<MAXLENGTH;i++){
+				for(i=start2;i<QUEUELENGTH;i++){
 					printf("%d ",queue2[i]);
 				}
 				for(i=0;i<end2;i++){
@@ -240,16 +240,15 @@ void monhpc( int tpid,int fromque)
 	bool isalive=true;
 	int count_attck=0;
 	int count_pval=0;
-//	long arr[WIN_SIZE][4];
-	long **arr=NULL;
-	arr=(long **)malloc((size_t)WIN_SIZE*sizeof(long *));
+	long long **arr=NULL;
+	arr=(long long **)malloc((size_t)(WIN_SIZE+1)*sizeof(long long *));
 	if(arr==NULL)exit(1);
-	for(idx=0;idx<WIN_SIZE;idx++){
-		arr[idx]=(long *)malloc((size_t)NUMEVENTS*sizeof(long));
+	memset(arr,0x0,(size_t)(WIN_SIZE+1)*sizeof(long long *));
+	for(idx=0;idx<=WIN_SIZE;idx++){
+		arr[idx]=(long long *)malloc((size_t)NUMEVENTS*sizeof(long long));
 		if(arr[idx]==NULL)exit(1);
-		memset(arr[idx],0x00,(size_t)NUMEVENTS*sizeof(long));
+		memset(arr[idx],0x00,(size_t)NUMEVENTS*sizeof(long long));
 	}
-	int aidx=0;
         for (idx = 0; idx < iterations; idx++) {
 	    retval = PAPI_read( eventSet, values[0] );
 	    if ( retval != PAPI_OK ){
@@ -264,22 +263,14 @@ void monhpc( int tpid,int fromque)
             if (interval > 0)
                 usleep(interval);
 	    int i=0;
-	    bool iszero=true;
 	    for(i=0;i<NUMEVENTS;i++){
-		if(values[0][i]!=0)iszero=false;
-		arr[aidx][i]=values[0][i];
+		arr[idx&WIN_SIZE][i]=values[0][i];
+//		fprintf(stdout,"%d,",arr[idx&WIN_SIZE][i]);
 	    }
-	    if(!iszero){
-//		fprintf(stdout,"\nidx:%d-->",aidx);
-//		for(i=0;i<NUMEVENTS;i++)
-//			fprintf(stdout,"%d,",arr[aidx][i]);
-//                fflush(stdout);
-		aidx++;
-	    }
-	    if(aidx==WIN_SIZE){
-		    aidx=0;
+//	    fflush(stdout);
+	    if((idx&WIN_SIZE)==WIN_SIZE){
 		    pthread_mutex_lock(&mut0);
-		    int dres=detection(arr,WIN_SIZE,NUMEVENTS);
+		    int dres=detection(WIN_SIZE+1,NUMEVENTS,arr);
 		    pthread_mutex_unlock(&mut0);
 		    if(dres==-1)continue;
 		    resolve_prediction(pidt,fromque,&count_attck,&count_pval,dres);
@@ -292,33 +283,35 @@ void monhpc( int tpid,int fromque)
                 }
             }
         }
-	if(aidx>=(WIN_SIZE>>1)){
+	if((idx&WIN_SIZE)>=(WIN_SIZE>>1)){
 		pthread_mutex_lock(&mut0);
-		int dres=detection(arr,aidx,NUMEVENTS);
+		int dres=detection(idx&WIN_SIZE,NUMEVENTS,arr);
 		pthread_mutex_unlock(&mut0);
 	    	if(dres!=-1){
 			resolve_prediction(pidt,fromque,&count_attck,&count_pval,dres);
 		}
 	    	fflush(stdout);
 	}
-	if(arr!=NULL){
-		for(idx=0;idx<WIN_SIZE;idx++)
+/**/	if(arr!=NULL){
+		for(idx=0;idx<=WIN_SIZE;idx++)
 			if(arr[idx]!=NULL)free(arr[idx]);
 		if(arr!=NULL)free(arr);
 	}
 	if(isalive){
 		pthread_mutex_lock(&mut2);
-		if(size2<MAXLENGTH){
+		if(size2<QUEUELENGTH){
 			queue2[end2]=pidt;
-			end2=(end2+1)%MAXLENGTH;
+			end2=(end2+1)&QUEUELENGTH;
 			size2++;
 		}
 		pthread_mutex_unlock(&mut2);
 	}
-        retval = PAPI_stop( eventSet, values[0]);
-        if ( retval != PAPI_OK ){
-//		handle_error("PAPI_stop");
-		return;
+	if(values!=NULL&&values[0]!=NULL){
+		retval = PAPI_stop( eventSet, values[0]);
+		if ( retval != PAPI_OK ){
+		//		handle_error("PAPI_stop");
+			return;
+		}
 	}
 	retval=PAPI_detach(eventSet);
 	if(retval!=PAPI_OK){
@@ -357,13 +350,13 @@ void printQues(){
 	int i=0;
 	if(size1>0){
 //		printf("\033[0;34m\n1th queue:");
-		printf("start1:%d,end1:%d,size1:%d\n",start1,end1,size1);
+		fprintf(stdout,"start1:%d,end1:%d,size1:%d\n",start1,end1,size1);
 /*		if(start1<=end1){
 			for(i=start1;i<end1;i++){
 				printf("%d ",queue1[i]);
 			}
 		}else{
-			for(i=start1;i<MAXLENGTH;i++){
+			for(i=start1;i<QUEUELENGTH;i++){
 				printf("%d ",queue1[i]);
 			}
 			for(i=0;i<end1;i++){
@@ -374,13 +367,13 @@ void printQues(){
 	}
 	if(size2>0){
 //		printf("\033[0;34m\n2th queue:");
-		printf("start2:%d,end2:%d,size2:%d\n",start2,end2,size2);
+		fprintf(stdout,"start2:%d,end2:%d,size2:%d\n",start2,end2,size2);
 /*		if(start2<=end2){
 			for(i=start2;i<end2;i++){
 				printf("%d ",queue2[i]);
 			}
 		}else{
-			for(i=start2;i<MAXLENGTH;i++){
+			for(i=start2;i<QUEUELENGTH;i++){
 				printf("%d ",queue2[i]);
 			}
 			for(i=0;i<end2;i++){
@@ -389,6 +382,7 @@ void printQues(){
 		}*/
 //		printf("\033[0m");
 	}
+	fflush(stdout);
 }
 
 void init(){
@@ -475,7 +469,7 @@ void init(){
 		closedir(dir);
 		break;
 	}
-	printf("Pids initialized!\n");
+	printf("Pids initialized!\n");	
 }
 
 bool check_exists(int pid){

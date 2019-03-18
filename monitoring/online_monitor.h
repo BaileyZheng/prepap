@@ -17,7 +17,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include "monhpc.h"
 #include "papi_test.h"
 #include "mydetection.h"
 
@@ -27,6 +26,7 @@
 #define MAX_STR_LEN PAPI_MAX_STR_LEN
 #define MAX_PATH_CHAR_SIZE 4096
 #define NUMEVENTS 4
+#define QUEUELENGTH 65535
 
 #define DEBUG
 #define FILTER_EXCEPTION
