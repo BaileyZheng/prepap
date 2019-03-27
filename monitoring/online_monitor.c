@@ -21,6 +21,7 @@ pthread_mutex_t mut0;
 pthread_mutex_t mut1;
 pthread_mutex_t mut2;
 pthread_mutex_t mut3;
+pthread_mutex_t mut4;
 int interval=0;
 DIR* dir;
 int eventSet=PAPI_NULL;
@@ -46,17 +47,18 @@ int main(int argc, char* argv[]){
 	pthread_create(&win_consumer1,NULL,(void *)mon_short,NULL);
 	pthread_t win_consumer2;
 	pthread_create(&win_consumer2,NULL,(void *)mon_short,NULL);
-//	pthread_t win_consumer3;
-//	pthread_create(&win_consumer3,NULL,(void *)mon_short,NULL);
+	pthread_t win_consumer3;
+	pthread_create(&win_consumer3,NULL,(void *)mon_short,NULL);
 	pthread_join(producer,NULL);
 	pthread_join(round_consumer,NULL);
 	pthread_join(win_consumer1,NULL);
 	pthread_join(win_consumer2,NULL);
-//	pthread_join(win_consumer3,NULL);
+	pthread_join(win_consumer3,NULL);
 	pthread_mutex_destroy(&mut0);
 	pthread_mutex_destroy(&mut1);
 	pthread_mutex_destroy(&mut2);
 	pthread_mutex_destroy(&mut3);
+	pthread_mutex_destroy(&mut4);
 	Py_Finalize();
 	int retval = PAPI_cleanup_eventset(eventSet);
 	if(retval!=PAPI_OK){
@@ -85,7 +87,7 @@ void produce_pid(){
 		while((next=readdir(dir))!=NULL){
 			if(isdigit(next->d_name[0])){
 				int idx=atoi(next->d_name);
-				if((pids[idx>>5]&(1<<(idx&0x1F)))==0&&check_exists(idx)&&!check_white(idx)){
+				if((pids[idx>>5]&(1<<(idx&0x1F)))==0&&check_running(idx)){
 					if(size1<QUEUELENGTH){
 						pthread_mutex_lock(&mut1);
 						queue1[end1]=idx;
@@ -96,8 +98,10 @@ void produce_pid(){
 				}
 				newpids[idx>>5]|=(1<<(idx&0x1F));
 			}
+//			fprintf(stdout,"-_-");
 		}
 		closedir(dir);
+//		fprintf(stdout,"-_-");
 		for(i=0;i<1+MAXLENGTH>>5;i++)pids[i]=newpids[i];
 //		usleep(1000);
 	}
@@ -116,7 +120,7 @@ void mon_short(){
 			start1=(start1+1)&QUEUELENGTH;
 			size1--;
 			pthread_mutex_unlock(&mut1);
-			if(!check_exists(t))continue;
+			if(!check_running(t))continue;
 			pthread_mutex_lock(&mut3);
 			monhpc(t,1);
 			pthread_mutex_unlock(&mut3);
@@ -163,7 +167,7 @@ void mon_long(){
 		start2=(start2+1)&QUEUELENGTH;
 		size2--;
 		pthread_mutex_unlock(&mut2);
-		if(!check_exists(t))continue;
+		if(!check_running(t))continue;
 		pthread_mutex_lock(&mut3);
 		monhpc(t,2);
 		pthread_mutex_unlock(&mut3);
@@ -217,7 +221,7 @@ void monhpc( int tpid,int fromque)
 	        iterations=Q1_WIN_NUM*WIN_SIZE;
 	else if(fromque==2)
 		iterations=Q2_WIN_NUM*WIN_SIZE;
-	if(!check_exists(pidt))return;
+	if(!check_running(pidt))return;
         retval = PAPI_attach( eventSet, ( unsigned long ) pidt );
         if ( retval != PAPI_OK ){
 //		handle_error("PAPI_attach");
@@ -408,6 +412,7 @@ void init(){
 	pthread_mutex_init(&mut1,NULL);
 	pthread_mutex_init(&mut2,NULL);
 	pthread_mutex_init(&mut3,NULL);
+	pthread_mutex_init(&mut4,NULL);
 	printf("Locks initialized!\n");	
 
 //init python---------------------------------------------
@@ -463,7 +468,8 @@ void init(){
 		while((next=readdir(dir))!=NULL){
 			if(isdigit(next->d_name[0])){
 				int idx=atoi(next->d_name);
-				pids[idx>>5]|=(1<<(idx&0x1F));
+				if(check_running(idx))
+					pids[idx>>5]|=(1<<(idx&0x1F));
 			}
 		}
 		closedir(dir);
@@ -471,7 +477,7 @@ void init(){
 	}
 	printf("Pids initialized!\n");	
 }
-
+/*
 bool check_exists(int pid){
 	if(pid<=0)return false;
 	if (kill(pid, 0) < 0) {
@@ -480,9 +486,10 @@ bool check_exists(int pid){
 	    }
 	}
 	return true;
-}
+}*/
 
-bool check_white(int pid){
+bool check_running(int pid){
+	char state;
 	int ppid;
 	char filename[100];
 	char pstr[10];
@@ -491,9 +498,9 @@ bool check_white(int pid){
 	strcat(filename,"/stat");
 	FILE *f = fopen(filename, "r");
 	if(f){
-		fscanf(f, "%*d %*s %*c %d",&ppid);
+		fscanf(f, "%*d %*s %c",&state);
 		fclose(f);
-		if(ppid==2||ppid==cur_pid||ppid==white_ksmtuned){
+		if(state=='R'){
 			return true;
 		}
 	}

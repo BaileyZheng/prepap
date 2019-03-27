@@ -9,6 +9,9 @@
 #include <unistd.h>
 #include <signal.h>
 #include <dirent.h>
+#ifndef _REENTRANT
+#define _REENTRANT
+#endif
 #include <pthread.h>
 #include <stdbool.h>
 #include <semaphore.h>
@@ -30,7 +33,13 @@
 
 #define DEBUG
 #define FILTER_EXCEPTION
-
+/*
+# ifndef __ASSEMBLER__
+extern int *__errno_location(void) __THROW __attribute__ ((__const__));
+#  if !defined _LIBC || defined _LIBC_REENTRANT
+#   define errno (*__errno_location())
+#  endif
+# endif*/
 void init();
 
 void produce_pid();
@@ -43,7 +52,7 @@ void resolve_prediction(int tpid,int fromque,int *count_attack,int *count_pval,i
 void addElemToQue(int quenum,int value);
 int delElemFromQue(int quenum);
 void printQues();
-bool check_exists(int pid);
-bool check_white(int pid);
+//bool check_exists(int pid);
+bool check_running(int pid);
 void wait4children(int signo);
 char* itos(int in,char* res);
